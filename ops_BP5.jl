@@ -14,7 +14,8 @@ using Base.Threads
 function create_metrics(pm, Nq, Nr, Ns, λ, μ, K, B_p;
                         xf=(q,r,s)->(q, ones(size(q)), zeros(size(r)), zeros(size(s))),
                         yf=(q,r,s)->(r, zeros(size(q)), ones(size(r)), zeros(size(s))),
-                        zf=(q,r,s)->(s, zeros(size(q)), zeros(size(r)), ones(size(s))))
+                        zf=(q,r,s)->(s, zeros(size(q)), zeros(size(r)), ones(size(s))),
+                        xc=(-1,1), yc=(-1,1), zc=(-1,1))
   
   Nqp = Nq + 1
   Nrp = Nr + 1
@@ -25,9 +26,9 @@ function create_metrics(pm, Nq, Nr, Ns, λ, μ, K, B_p;
   @assert pm <= 8
   pp = pm == 6 ? 8 : pm
 
-  q = range(-1, stop=1, length=Nqp)
-  r = range(-1, stop=1, length=Nrp)
-  s = range(-1, stop=1, length=Nsp)
+  q = range(xc[1], stop=xc[2], length=Nqp)
+  r = range(yc[1], stop=yc[2], length=Nrp)
+  s = range(zc[1], stop=zc[2], length=Nsp)
 
   # Create the mesh
 
@@ -2020,7 +2021,7 @@ function sparse_i(n::Int)
     return sparse(rows, cols, vals, n, n)
 end
 
-function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
+function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true, xt=(-1, 1), yt=(-1, 1), zt=(-1,1))
     Nqp = Nq + 1
     Nrp = Nr + 1
     Nsp = Ns + 1
@@ -2226,15 +2227,15 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
     
 
     # First derivative operators:
-    (Dq, HqI, Hq, q) = diagonal_sbp_D1(p, Nq; xc = (-1,1))
+    (Dq, HqI, Hq, q) = diagonal_sbp_D1(p, Nq; xc = xt)
     Qq = Hq * Dq
     QqT = sparse(transpose(Qq))
 
-    (Dr, HrI, Hr, r) = diagonal_sbp_D1(p, Nr; xc = (-1,1))
+    (Dr, HrI, Hr, r) = diagonal_sbp_D1(p, Nr; xc = yt)
     Qr = Hr * Dr
     QrT = sparse(transpose(Qr))
 
-    (Ds, HsI, Hs, s) = diagonal_sbp_D1(p, Ns; xc = (-1,1))
+    (Ds, HsI, Hs, s) = diagonal_sbp_D1(p, Ns; xc = zt)
     Qs = Hs * Ds
     QsT = sparse(transpose(Qs))
 
@@ -2245,12 +2246,9 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
 
   
         #Variable Coefficient Pure Second Derivative Operators
-        #(D2q, BSq, _, _, q) = variable_diagonal_sbp_D2(p, Nq, B; xc = (-1,1))
-        #(D2r, BSr, _, _, r) = variable_diagonal_sbp_D2(p, Nr, B; xc = (-1,1))
-        #(D2s, BSs, _, _, s) = variable_diagonal_sbp_D2(p, Ns, B; xc = (-1,1))
-        (D2q, S0q, SNq, _, _, _) = diagonal_sbp_D2(p, Nq; xc = (-1,1))
-        (D2r, S0r, SNr, _, _, _) = diagonal_sbp_D2(p, Nr; xc = (-1,1))
-        (D2s, S0s, SNs, _, _, _) = diagonal_sbp_D2(p, Ns; xc = (-1,1))
+        (D2q, S0q, SNq, _, _, _) = diagonal_sbp_D2(p, Nq; xc = xt)
+        (D2r, S0r, SNr, _, _, _) = diagonal_sbp_D2(p, Nr; xc = yt)
+        (D2s, S0s, SNs, _, _, _) = diagonal_sbp_D2(p, Ns; xc = zt)
 
         D11 = fill(spzeros(Nqp*Nrp*Nsp, Nqp*Nrp*Nsp), 3, 3)
         D12 = fill(spzeros(Nqp*Nrp*Nsp, Nqp*Nrp*Nsp), 3, 3)
@@ -2270,21 +2268,21 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
                 local i = test_i[idx]
                 local j = test_j[idx]
                 #D11[i, j] = c[1, i, 1, j] * JI * (Is ⊗ Ir ⊗ D2q)
-                (D11[i, j], _, _) = var_3D_D2q(p, Nqp, Nrp, Nsp, metrics.C[1, i, 1, j], HqI; xc = (-1, 1))
+                (D11[i, j], _, _) = var_3D_D2q(p, Nqp, Nrp, Nsp, metrics.C[1, i, 1, j], HqI; xc = xt)
                 D11[i, j] = JI * D11[i, j]
                 D12[i, j] = c[1, i, 2, j] * JI * (Is ⊗ Dr ⊗ Dq)
                 D13[i, j] = c[1, i, 3, j] * JI * (Ds ⊗ Ir ⊗ Dq)
 
                 D21[i, j] = c[2, i, 1, j] * JI * (Is ⊗ Dr ⊗ Dq)
                     #D22[i, j] = c[2, i, 2, j] * JI * (Is ⊗ D2r ⊗ Iq)
-                (D22[i, j], _, _) = var_3D_D2r(p, Nqp, Nrp, Nsp, metrics.C[2, i, 2, j], HrI; xc = (-1, 1))
+                (D22[i, j], _, _) = var_3D_D2r(p, Nqp, Nrp, Nsp, metrics.C[2, i, 2, j], HrI; xc = yt)
                 D22[i, j] = JI * D22[i, j]
                 D23[i, j] = c[2, i, 3, j] * JI * (Ds ⊗ Dr ⊗ Iq)
 
                 D31[i, j] = c[3, i, 1, j] * JI * (Ds ⊗ Ir ⊗ Dq)
                 D32[i, j] = c[3, i, 2, j] * JI * (Ds ⊗ Dr ⊗ Iq)
                     #D33[i, j] = c[3, i, 3, j] * JI * (D2s ⊗ Ir ⊗ Iq)
-                (D33[i, j], _, _) = var_3D_D2s(p, Nqp, Nrp, Nsp, metrics.C[3, i, 3, j], HsI; xc = (-1, 1))
+                (D33[i, j], _, _) = var_3D_D2s(p, Nqp, Nrp, Nsp, metrics.C[3, i, 3, j], HsI; xc = zt)
                 D33[i, j] = JI * D33[i, j]
                 #print("\nFinished Index:$(Threads.threadid()) $(i), $(j)\n")
             end
@@ -2300,7 +2298,7 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
                 Eq0 = sparse([1], [1], [1], Nqp, Nqp)
                 Eq0 = sparse([Nqp], [Nqp], [1], Nqp, Nqp)
                 if 0 < idx_x && idx_x <= 9 
-                    (D11[i, j], S0_11, SN_11) = var_3D_D2q(p, Nqp, Nrp, Nsp, metrics.C[1, i, 1, j], HqI; xc = (-1, 1))
+                    (D11[i, j], S0_11, SN_11) = var_3D_D2q(p, Nqp, Nrp, Nsp, metrics.C[1, i, 1, j], HqI; xc = xt)
                     D11[i, j] = D11[i, j]
                     D11[i, j] = JI * D11[i, j]
                     D12[i, j] = c[1, i, 2, j] * JI * (Is ⊗ Dr ⊗ Dq)
@@ -2309,7 +2307,7 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
                 elseif 10 <= idx_x && idx_x <= 18
                     D21[i, j] = c[2, i, 1, j] * JI * (Is ⊗ Dr ⊗ Dq)
                         #D22[i, j] = c[2, i, 2, j] * JI * (Is ⊗ D2r ⊗ Iq)
-                    (D22[i, j], _, _) = var_3D_D2r(p, Nqp, Nrp, Nsp, metrics.C[2, i, 2, j], HrI; xc = (-1, 1))
+                    (D22[i, j], _, _) = var_3D_D2r(p, Nqp, Nrp, Nsp, metrics.C[2, i, 2, j], HrI; xc = yt)
                     D22[i, j] = JI * D22[i, j]
                     D23[i, j] = c[2, i, 3, j] * JI * (Ds ⊗ Dr ⊗ Iq)
                 elseif 19 <= idx_x && idx_x <= 27
@@ -2317,7 +2315,7 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
                     D31[i, j] = c[3, i, 1, j] * JI * (Ds ⊗ Ir ⊗ Dq)
                     D32[i, j] = c[3, i, 2, j] * JI * (Ds ⊗ Dr ⊗ Iq)
                         #D33[i, j] = c[3, i, 3, j] * JI * (D2s ⊗ Ir ⊗ Iq)
-                    (D33[i, j], _, _) = var_3D_D2s(p, Nqp, Nrp, Nsp, metrics.C[3, i, 3, j], HsI; xc = (-1, 1))
+                    (D33[i, j], _, _) = var_3D_D2s(p, Nqp, Nrp, Nsp, metrics.C[3, i, 3, j], HsI; xc = zt)
                     D33[i, j] = JI * D33[i, j]
                 else
                     print("\nUH OH something broke in Multithreaded operator")
@@ -2336,7 +2334,7 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
                 Eq0 = sparse([1], [1], [1], Nqp, Nqp)
                 Eq0 = sparse([Nqp], [Nqp], [1], Nqp, Nqp)
                 if 0 < idx_x && idx_x <= 9 
-                    (D11[i, j], S0_11, SN_11) = var_3D_D2q_fast(p, Nqp, Nrp, Nsp, metrics.C[1, i, 1, j], HqI; xc = (-1, 1), par=true)
+                    (D11[i, j], S0_11, SN_11) = var_3D_D2q_fast(p, Nqp, Nrp, Nsp, metrics.C[1, i, 1, j], HqI; xc = xt, par=true)
                     D11[i, j] = JI * D11[i, j]
                     D12[i, j] = c[1, i, 2, j] * JI * (Is ⊗ Dr ⊗ Dq)
                     D13[i, j] = c[1, i, 3, j] * JI * (Ds ⊗ Ir ⊗ Dq)
@@ -2344,7 +2342,7 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
                 elseif 10 <= idx_x && idx_x <= 18
                     D21[i, j] = c[2, i, 1, j] * JI * (Is ⊗ Dr ⊗ Dq)
                         #D22[i, j] = c[2, i, 2, j] * JI * (Is ⊗ D2r ⊗ Iq)
-                    (D22[i, j], _, _) = var_3D_D2r_fast(p, Nqp, Nrp, Nsp, metrics.C[2, i, 2, j], HrI; xc = (-1, 1), par=true)
+                    (D22[i, j], _, _) = var_3D_D2r_fast(p, Nqp, Nrp, Nsp, metrics.C[2, i, 2, j], HrI; xc = yt, par=true)
                     D22[i, j] = JI * D22[i, j]
                     D23[i, j] = c[2, i, 3, j] * JI * (Ds ⊗ Dr ⊗ Iq)
                 elseif 19 <= idx_x && idx_x <= 27
@@ -2352,7 +2350,7 @@ function locoperator_fast(p, Nq, Nr, Ns, metrics, C; par=true, nest=true)
                     D31[i, j] = c[3, i, 1, j] * JI * (Ds ⊗ Ir ⊗ Dq)
                     D32[i, j] = c[3, i, 2, j] * JI * (Ds ⊗ Dr ⊗ Iq)
                         #D33[i, j] = c[3, i, 3, j] * JI * (D2s ⊗ Ir ⊗ Iq)
-                    (D33[i, j], _, _) = var_3D_D2s_fast(p, Nqp, Nrp, Nsp, metrics.C[3, i, 3, j], HsI; xc = (-1, 1), par=true)
+                    (D33[i, j], _, _) = var_3D_D2s_fast(p, Nqp, Nrp, Nsp, metrics.C[3, i, 3, j], HsI; xc = zt, par=true)
                     D33[i, j] = JI * D33[i, j]
                 else
                     print("\nUH OH something broke in Multithreaded operator")
@@ -2742,7 +2740,7 @@ T33_3 = (-sJI3) * (c[2,3,1,3]*Dq3 + c[2,3,2,3]*Sr + c[2,3,3,3]*Ds3)
 end
 
 
-function var_3D_D2q_fast(p, Nqp, Nrp, Nsp, C, HIq; xc = (-1, 1), par=false)
+function var_3D_D2q_fast(p, Nqp, Nrp, Nsp, C, HIq; xc = (-1,1), par=false)
     # C has not been diagonalized, e.g. send in C[1,1,1,1], which is size (Nqp, Nrp, Nsp)
     Iq = sparse(I, Nqp, Nqp)
     Ir = sparse(I, Nrp, Nrp)
@@ -2757,7 +2755,7 @@ function var_3D_D2q_fast(p, Nqp, Nrp, Nsp, C, HIq; xc = (-1, 1), par=false)
         for i = 1:Nrp
             for j = 1:Nsp
                 B = C[:, i, j]# get coefficient on 1D line in q-direction
-                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nqp-1, B; xc = (-1,1))
+                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nqp-1, B; xc = xc)
                 ej = spzeros(Nsp, 1)
                 ej[j] = 1
                 ei = spzeros(Nrp, 1)
@@ -2792,7 +2790,7 @@ function var_3D_D2q_single(p, Iset, chunk_nrp, Nqp, Nrp, Nsp, N, C; xc = (-1, 1)
     for i in chunk_nrp # dont know which I's and Js we got
             for j = 1:Nsp
                  B = C[:, i, j]# get coefficient on 1D line in q-direction
-                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nqp-1, B; xc = (-1,1))
+                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nqp-1, B; xc = xc)
                  ej = spzeros(Nsp, 1)
                 ej[j] = 1
                  ei = spzeros(Nrp, 1)
@@ -2822,7 +2820,7 @@ function var_3D_D2r_fast(p, Nqp, Nrp, Nsp, C, HIr; xc = (-1, 1), par = false)
         for i = 1:Nqp
             for j = 1:Nsp
                 B = C[i, :, j]# get coefficient on 1D line in r-direction
-                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nrp-1, B; xc = (-1,1))
+                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nrp-1, B; xc = xc)
                 ej = spzeros(Nsp, 1)
                 ej[j] = 1
                 ei = spzeros(Nqp, 1)
@@ -2857,7 +2855,7 @@ function var_3D_D2r_single(p, Iset, chunk_nqp, Nqp, Nrp, Nsp, N, C; xc = (-1, 1)
     for i in chunk_nqp # dont know which I's and Js we got
             for j = 1:Nsp
                 B = C[i, :, j]# get coefficient on 1D line in r-direction
-                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nrp-1, B; xc = (-1,1))
+                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nrp-1, B; xc = xc)
                 ej = spzeros(Nsp, 1)
                 ej[j] = 1
                 ei = spzeros(Nqp, 1)
@@ -2885,7 +2883,7 @@ function var_3D_D2s_fast(p, Nqp, Nrp, Nsp, C, HIq; xc = (-1, 1), par=false)
         for i = 1:Nrp
             for j = 1:Nqp
                 B = C[j, i, :]# get coefficient on 1D line in s-direction
-                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nsp-1, B; xc = (-1,1))
+                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nsp-1, B; xc = xc)
                 ej = spzeros(Nqp, 1)
                 ej[j] = 1
                 ei = spzeros(Nrp, 1)
@@ -2921,7 +2919,7 @@ function var_3D_D2s_single(p, Iset, chunk_nrp, Nqp, Nrp, Nsp, N, C; xc = (-1, 1)
     for i in chunk_nrp # dont know which I's and Js we got
             for j = 1:Nqp
                 B = C[j, i, :]# get coefficient on 1D line in s-direction
-                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nsp-1, B; xc = (-1,1))
+                (D2, S0, SN, _, _, _, _) = variable_diagonal_sbp_D2(p, Nsp-1, B; xc = xc)
                 ej = spzeros(Nqp, 1)
                 ej[j] = 1
                 ei = spzeros(Nrp, 1)
