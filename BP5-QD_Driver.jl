@@ -29,7 +29,7 @@ const global localARGS = ["./BP5.dat"]
 
 function main()
 
-    #device!(3)
+    device!(3)
     # Read in params from DAT file for problem
     (pth, stride_space, stride_time, SBPp,
      xc, yc, zc,
